@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     
     # LLM Settings - Qwen2.5-3B-Instruct
-    MODEL_PATH: str = os.path.join(os.path.dirname(__file__), "models", "qwen2.5-3b-instruct-q8_0gguf")
+    MODEL_PATH: str = os.path.join(os.path.dirname(__file__), "models", "qwen2.5-3b-instruct-q8_0.gguf")
     LLM_N_GPU_LAYERS: int = -1
     LLM_N_THREADS: int = 6
     LLM_N_CTX: int = 2048

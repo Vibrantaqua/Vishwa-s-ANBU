@@ -26,7 +26,6 @@ class SpeechToText:
         logger.info(f"Loading Whisper {self.model_size} on {self.device}...")
         
         try:
-            # Ensure CUDA is available if GPU device is requested
             if self.device == "cuda" and not torch.cuda.is_available():
                 logger.warning("CUDA not available, falling back to CPU")
                 self.device = "cpu"
@@ -42,8 +41,27 @@ class SpeechToText:
             self._is_initialized = True
             logger.info(f"Whisper model loaded successfully on {self.device}")
         except Exception as e:
-            logger.error(f"Failed to load Whisper model: {e}")
-            raise
+            error_msg = str(e).lower()
+            if "cublas" in error_msg or "cudart" in error_msg or "cuda" in error_msg:
+                logger.warning(f"CUDA error ({e}), falling back to CPU...")
+                self.device = "cpu"
+                self.compute_type = "int8"
+                try:
+                    self._model = WhisperModel(
+                        self.model_size,
+                        device="cpu",
+                        compute_type="int8",
+                        download_root=None,
+                        num_workers=1
+                    )
+                    self._is_initialized = True
+                    logger.info("Whisper model loaded successfully on CPU (fallback)")
+                except Exception as e2:
+                    logger.error(f"Failed to load Whisper on CPU: {e2}")
+                    raise
+            else:
+                logger.error(f"Failed to load Whisper model: {e}")
+                raise
 
     def _is_gibberish(self, text: str) -> bool:
         if not text or len(text.strip()) < 3:
@@ -124,11 +142,20 @@ class SpeechToText:
                 logger.debug(f"Gibberish detected, filtering: {full_text}")
                 full_text = ""
             
+            lang = "ta"
+            lang_prob = 0.0
+            try:
+                if info and hasattr(info, 'language'):
+                    lang = info.language or "ta"
+                    lang_prob = float(info.language_probability or 0.0)
+            except Exception:
+                pass
+            
             return {
                 "text": full_text,
                 "segments": segment_list,
-                "language": info.language,
-                "language_probability": info.language_probability
+                "language": lang,
+                "language_probability": lang_prob
             }
             
         except Exception as e:
