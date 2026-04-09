@@ -58,12 +58,6 @@ class SpeechToText:
                 torch_dtype=torch_dtype
             )
             
-            if hasattr(self._pipe.model, 'config') and hasattr(self._pipe.tokenizer, 'get_decoder_prompt_ids'):
-                self._pipe.model.config.forced_decoder_ids = self._pipe.tokenizer.get_decoder_prompt_ids(
-                    language="ta", task="transcribe"
-                )
-                logger.info("Forced Tamil language decoding")
-            
             self._is_initialized = True
             logger.info(f"HuggingFace Tamil Whisper model loaded successfully on {self.device}")
         except Exception as e:
@@ -95,11 +89,6 @@ class SpeechToText:
                         device="cpu",
                         torch_dtype=torch_dtype
                     )
-                    
-                    if hasattr(self._pipe.model, 'config') and hasattr(self._pipe.tokenizer, 'get_decoder_prompt_ids'):
-                        self._pipe.model.config.forced_decoder_ids = self._pipe.tokenizer.get_decoder_prompt_ids(
-                            language="ta", task="transcribe"
-                        )
                     
                     self._is_initialized = True
                     logger.info("Tamil Whisper model loaded successfully on CPU (fallback)")

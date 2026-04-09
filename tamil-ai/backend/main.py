@@ -1,3 +1,14 @@
+# Fix thread issues first
+import multiprocessing
+import os
+import torch
+try:
+    multiprocessing.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass
+torch.set_num_threads(2)
+os.environ['OMP_NUM_THREADS'] = '2'
+
 import asyncio
 import base64
 import uuid
@@ -8,7 +19,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from loguru import logger
-import torch
 import numpy as np
 
 from config import settings
@@ -17,6 +27,10 @@ from models.stt import stt
 from models.tts import tts
 from utils.audio_buffer import AudioBuffer, get_available_devices, get_default_input_device
 from memory.conversation_memory import summary_memory, memory
+
+
+# Global lock to serialize AI requests - prevents threading issues
+_ai_lock = asyncio.Lock()
 
 
 class AudioInput(BaseModel):
@@ -137,36 +151,43 @@ async def list_audio_devices():
 async def text_conversation(input_data: TextInput):
     session_id = input_data.session_id or str(uuid.uuid4())
     
-    try:
-        history_context = await summary_memory.get_context_for_prompt(session_id)
-        
-        llm_response = llm.generate_response(
-            user_input=input_data.text,
-            history_context=history_context
-        )
-        
-        new_summary = await summary_memory.add_turn_and_check_summary(
-            session_id=session_id,
-            user_input=input_data.text,
-            bot_response=llm_response["response"],
-            emotion=llm_response["emotion"],
-            filler_intensity=llm_response["filler_intensity"]
-        )
-        
-        audio_base64 = tts.synthesize_to_base64(llm_response["response"])
-        
-        return ConversationResponse(
-            response=llm_response["response"],
-            emotion=llm_response["emotion"],
-            filler_intensity=llm_response["filler_intensity"],
-            audio_base64=audio_base64,
-            session_id=session_id,
-            new_summary=new_summary
-        )
-        
-    except Exception as e:
-        logger.error(f"Conversation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    async with _ai_lock:
+        try:
+            history_context = await summary_memory.get_context_for_prompt(session_id)
+            
+            logger.info(f"Generating response for: {input_data.text[:50]}...")
+            llm_response = llm.generate_response(
+                user_input=input_data.text,
+                history_context=history_context
+            )
+            logger.info(f"LLM response generated: {llm_response.get('response', '')[:50]}...")
+            
+            new_summary = await summary_memory.add_turn_and_check_summary(
+                session_id=session_id,
+                user_input=input_data.text,
+                bot_response=llm_response["response"],
+                emotion=llm_response["emotion"],
+                filler_intensity=llm_response["filler_intensity"]
+            )
+            
+            logger.info("Synthesizing audio...")
+            audio_base64 = tts.synthesize_to_base64(llm_response["response"])
+            logger.info("Audio synthesis complete")
+            
+            return ConversationResponse(
+                response=llm_response["response"],
+                emotion=llm_response["emotion"],
+                filler_intensity=llm_response["filler_intensity"],
+                audio_base64=audio_base64,
+                session_id=session_id,
+                new_summary=new_summary
+            )
+            
+        except Exception as e:
+            logger.error(f"Conversation error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/conversation/audio", response_model=ConversationResponse)

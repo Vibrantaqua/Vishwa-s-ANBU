@@ -2,11 +2,22 @@ import os
 import numpy as np
 import torch
 import base64
+import threading
+import atexit
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Tuple
 from io import BytesIO
 from scipy.io import wavfile
 from loguru import logger
 from config import settings
+
+# Global executor for running TTS operations
+_tts_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tts_worker")
+
+def _cleanup_executor():
+    _tts_executor.shutdown(wait=False)
+
+atexit.register(_cleanup_executor)
 
 
 class TextToSpeech:
@@ -80,27 +91,30 @@ class TextToSpeech:
         except Exception as e:
             logger.warning(f"gTTS failed: {e}, trying pyttsx3...")
         
-        # Try pyttsx3 (offline) - each call creates fresh engine to avoid thread reuse issues
+        # Try pyttsx3 (offline) - run in dedicated thread to avoid threading conflicts
         try:
             import pyttsx3
-            engine = pyttsx3.init()
-            engine.setProperty('rate', 150)
             import tempfile
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
-                temp_path = f.name
-            engine.save_to_file(text[:500], temp_path)
-            engine.runAndWait()
-            # Stop the engine to release threads
-            engine.stop()
-            del engine
-            import soundfile as sf
-            audio_data, sr = sf.read(temp_path)
-            if len(audio_data.shape) > 1:
-                audio_data = audio_data[:, 0]
-            buffer = BytesIO()
-            wavfile.write(buffer, int(sr), (audio_data * 32767).astype(np.int16))
-            os.unlink(temp_path)
-            return buffer.getvalue(), False
+            
+            def _run_pyttsx3(txt):
+                engine = pyttsx3.init()
+                engine.setProperty('rate', 150)
+                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+                    temp_path = f.name
+                engine.save_to_file(txt[:500], temp_path)
+                engine.runAndWait()
+                engine.stop()
+                import soundfile as sf
+                audio_data, sr = sf.read(temp_path)
+                if len(audio_data.shape) > 1:
+                    audio_data = audio_data[:, 0]
+                buffer = BytesIO()
+                wavfile.write(buffer, int(sr), (audio_data * 32767).astype(np.int16))
+                os.unlink(temp_path)
+                return buffer.getvalue()
+            
+            audio_bytes = _tts_executor.submit(_run_pyttsx3, text).result(timeout=10)
+            return audio_bytes, False
         except Exception as e:
             logger.warning(f"pyttsx3 failed: {e}, using beep")
         

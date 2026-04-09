@@ -11,53 +11,48 @@ class ConversationMemory:
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._lock = asyncio.Lock()
-        self._conn: Optional[aiosqlite.Connection] = None
         self._init_db()
 
     def _init_db(self) -> None:
-        async def _setup():
-            conn = await aiosqlite.connect(self.db_path)
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS conversations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL,
-                    turn_number INTEGER NOT NULL,
-                    user_input TEXT NOT NULL,
-                    bot_response TEXT NOT NULL,
-                    emotion TEXT,
-                    filler_intensity REAL,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS summaries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL,
-                    summary_text TEXT NOT NULL,
-                    turn_count INTEGER,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_session 
-                ON conversations(session_id, turn_number)
-            """)
-            await conn.commit()
-            await conn.close()
-        
-        asyncio.run(_setup())
+        import sqlite3
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                turn_number INTEGER NOT NULL,
+                user_input TEXT NOT NULL,
+                bot_response TEXT NOT NULL,
+                emotion TEXT,
+                filler_intensity REAL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                summary_text TEXT NOT NULL,
+                turn_count INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_session 
+            ON conversations(session_id, turn_number)
+        """)
+        conn.commit()
+        conn.close()
         logger.info(f"Database initialized at {self.db_path}")
 
-    async def _get_connection(self) -> aiosqlite.Connection:
-        if self._conn is None:
-            self._conn = await aiosqlite.connect(self.db_path)
-            self._conn.row_factory = aiosqlite.Row
-        return self._conn
-
+    async def _get_connection(self):
+        import sqlite3
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    
     async def close(self) -> None:
-        if self._conn is not None:
-            await self._conn.close()
-            self._conn = None
+        pass
 
     async def add_turn(
         self,
@@ -69,71 +64,72 @@ class ConversationMemory:
     ) -> int:
         async with self._lock:
             conn = await self._get_connection()
-            async with conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT COALESCE(MAX(turn_number), 0) + 1 as next_turn
-                    FROM conversations WHERE session_id = ?
-                """, (session_id,))
-                next_turn = cursor.fetchone()["next_turn"]
-                
-                cursor.execute("""
-                    INSERT INTO conversations 
-                    (session_id, turn_number, user_input, bot_response, emotion, filler_intensity)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (session_id, next_turn, user_input, bot_response, emotion, filler_intensity))
-                conn.commit()
-                return next_turn
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COALESCE(MAX(turn_number), 0) + 1 as next_turn
+                FROM conversations WHERE session_id = ?
+            """, (session_id,))
+            next_turn = cursor.fetchone()["next_turn"]
+            
+            cursor.execute("""
+                INSERT INTO conversations 
+                (session_id, turn_number, user_input, bot_response, emotion, filler_intensity)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (session_id, next_turn, user_input, bot_response, emotion, filler_intensity))
+            conn.commit()
+            conn.close()
+            return next_turn
 
     async def get_recent_turns(self, session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         async with self._lock:
             conn = await self._get_connection()
-            async with conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT * FROM conversations 
-                    WHERE session_id = ?
-                    ORDER BY turn_number DESC
-                    LIMIT ?
-                """, (session_id, limit))
-                rows = cursor.fetchall()
-                return [dict(row) for row in reversed(rows)]
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM conversations 
+                WHERE session_id = ?
+                ORDER BY turn_number DESC
+                LIMIT ?
+            """, (session_id, limit))
+            rows = cursor.fetchall()
+            conn.close()
+            return [dict(row) for row in reversed(rows)]
 
     async def get_turn_count(self, session_id: str) -> int:
         async with self._lock:
             conn = await self._get_connection()
-            async with conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT COUNT(*) as count FROM conversations WHERE session_id = ?
-                """, (session_id,))
-                return cursor.fetchone()["count"]
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) as count FROM conversations WHERE session_id = ?
+            """, (session_id,))
+            count = cursor.fetchone()["count"]
+            conn.close()
+            return count
 
     async def save_summary(self, session_id: str, summary: str, turn_count: int) -> None:
         async with self._lock:
             conn = await self._get_connection()
-            async with conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO summaries (session_id, summary_text, turn_count)
-                    VALUES (?, ?, ?)
-                """, (session_id, summary, turn_count))
-                conn.commit()
-                logger.info(f"Summary saved for session {session_id}")
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO summaries (session_id, summary_text, turn_count)
+                VALUES (?, ?, ?)
+            """, (session_id, summary, turn_count))
+            conn.commit()
+            conn.close()
+            logger.info(f"Summary saved for session {session_id}")
 
     async def get_latest_summary(self, session_id: str) -> Optional[str]:
         async with self._lock:
             conn = await self._get_connection()
-            async with conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT summary_text FROM summaries
-                    WHERE session_id = ?
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """, (session_id,))
-                row = cursor.fetchone()
-                return row["summary_text"] if row else None
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT summary_text FROM summaries
+                WHERE session_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (session_id,))
+            row = cursor.fetchone()
+            conn.close()
+            return row["summary_text"] if row else None
 
     async def should_summarize(self, session_id: str, interval: int = 5) -> bool:
         count = await self.get_turn_count(session_id)
@@ -215,18 +211,18 @@ class ConversationSummaryMemory:
     async def clear_session(self, session_id: str) -> None:
         async with self.memory._lock:
             conn = await self.memory._get_connection()
-            async with conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "DELETE FROM conversations WHERE session_id = ?", 
-                    (session_id,)
-                )
-                cursor.execute(
-                    "DELETE FROM summaries WHERE session_id = ?", 
-                    (session_id,)
-                )
-                conn.commit()
-                logger.info(f"Cleared session {session_id}")
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM conversations WHERE session_id = ?", 
+                (session_id,)
+            )
+            cursor.execute(
+                "DELETE FROM summaries WHERE session_id = ?", 
+                (session_id,)
+            )
+            conn.commit()
+            conn.close()
+            logger.info(f"Cleared session {session_id}")
 
 
 memory = ConversationMemory(settings.DB_PATH)
