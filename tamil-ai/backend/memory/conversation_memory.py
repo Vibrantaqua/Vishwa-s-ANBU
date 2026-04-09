@@ -1,9 +1,8 @@
-import sqlite3
+import aiosqlite
 import json
 import asyncio
 from datetime import datetime
 from typing import List, Dict, Optional, Any
-from contextlib import asynccontextmanager
 from loguru import logger
 from config import settings
 
@@ -12,48 +11,53 @@ class ConversationMemory:
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._lock = asyncio.Lock()
+        self._conn: Optional[aiosqlite.Connection] = None
         self._init_db()
 
     def _init_db(self) -> None:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                turn_number INTEGER NOT NULL,
-                user_input TEXT NOT NULL,
-                bot_response TEXT NOT NULL,
-                emotion TEXT,
-                filler_intensity REAL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS summaries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                summary_text TEXT NOT NULL,
-                turn_count INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_session 
-            ON conversations(session_id, turn_number)
-        """)
-        conn.commit()
-        conn.close()
+        async def _setup():
+            conn = await aiosqlite.connect(self.db_path)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    turn_number INTEGER NOT NULL,
+                    user_input TEXT NOT NULL,
+                    bot_response TEXT NOT NULL,
+                    emotion TEXT,
+                    filler_intensity REAL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS summaries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    summary_text TEXT NOT NULL,
+                    turn_count INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_session 
+                ON conversations(session_id, turn_number)
+            """)
+            await conn.commit()
+            await conn.close()
+        
+        asyncio.run(_setup())
         logger.info(f"Database initialized at {self.db_path}")
 
-    @asynccontextmanager
-    async def _get_connection(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-        finally:
-            conn.close()
+    async def _get_connection(self) -> aiosqlite.Connection:
+        if self._conn is None:
+            self._conn = await aiosqlite.connect(self.db_path)
+            self._conn.row_factory = aiosqlite.Row
+        return self._conn
+
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
 
     async def add_turn(
         self,

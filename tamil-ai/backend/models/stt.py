@@ -64,9 +64,9 @@ class SpeechToText:
         english_letters = sum(1 for c in text if c.isalpha() and ord(c) < 128)
         total_letters = sum(1 for c in text if c.isalpha())
         
-        if total_letters > 0 and english_letters / total_letters > 0.9:
+        if total_letters > 0 and english_letters / total_letters > 0.95:
             words = text.split()
-            if len(words) <= 3 and all(len(w) <= 4 for w in words):
+            if len(words) <= 2 and all(len(w) <= 3 for w in words):
                 return True
         
         return False

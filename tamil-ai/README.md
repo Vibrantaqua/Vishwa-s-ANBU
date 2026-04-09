@@ -80,9 +80,9 @@ pip install TTS gtts pydub
 # Create models directory
 mkdir -p backend/models
 
-# Download Qwen2.5-3B-Instruct Q4_K_M GGUF
+# Download Qwen2.5-3B-Instruct Q8_0 GGUF
 # From: https://huggingface.co/QuantFactory/Mergekit-Qwen2.5-3B-Instruct-GGUF
-# File: qwen2.5-3b-instruct-q4_k_m.gguf (~2GB)
+# File: qwen2.5-3b-instruct-q8_0.gguf (~2GB)
 # Save to: backend/models/
 ```
 
@@ -112,7 +112,7 @@ Edit `backend/config.py` or create `.env`:
 
 ```env
 # LLM Settings
-MODEL_PATH=./models/qwen2.5-3b-instruct-q4_k_m.gguf
+MODEL_PATH=./models/qwen2.5-3b-instruct-q8_0.gguf
 LLM_N_GPU_LAYERS=35
 LLM_N_THREADS=6
 LLM_N_CTX=2048
@@ -203,9 +203,9 @@ pip install pydub gtts
 
 ## Model Downloads
 
-### Primary: Qwen2.5-3B-Instruct Q4_K_M GGUF
+### Primary: Qwen2.5-3B-Instruct Q8_0 GGUF
 - URL: https://huggingface.co/QuantFactory/Mergekit-Qwen2.5-3B-Instruct-GGUF
-- File: `qwen2.5-3b-instruct-q4_k_m.gguf`
+- File: `qwen2.5-3b-instruct-q8_0.gguf`
 - Size: ~2GB
 - Save to: `backend/models/`
 

@@ -117,10 +117,10 @@ class TextToSpeech:
             audio_int16 = (audio * 32767).astype(np.int16)
             buffer = BytesIO()
             wavfile.write(buffer, sample_rate, audio_int16)
-            return buffer.getvalue(), False
+            return buffer.getvalue(), True  # Fallback to emergency beep
         except Exception as e:
             logger.error(f"Fallback audio generation failed: {e}")
-            return b"", False
+            return b"", True
 
     def synthesize_to_base64(
         self,

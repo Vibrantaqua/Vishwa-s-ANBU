@@ -134,6 +134,24 @@ class AudioBuffer:
             self._silence_frames = 0
             self._total_frames = 0
 
+    def add_chunk(self, chunk: np.ndarray) -> None:
+        """Add audio chunk from WebSocket stream with proper processing."""
+        with self._lock:
+            self._buffer.append(chunk.copy())
+            
+            self._total_frames += len(chunk)
+            
+            rms = np.sqrt(np.mean(chunk ** 2))
+            
+            if rms < self.silence_threshold:
+                self._silence_frames += len(chunk)
+            else:
+                self._silence_frames = 0
+            
+            max_frames = int(self.sample_rate * self.max_duration)
+            if self._total_frames >= max_frames:
+                logger.warning("Max recording duration reached")
+
 
 def get_available_devices() -> list:
     try:

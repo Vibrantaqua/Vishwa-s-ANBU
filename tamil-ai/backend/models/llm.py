@@ -33,8 +33,8 @@ class EmotionalLLM:
         import os
         if not os.path.exists(self.model_path):
             logger.warning(f"Model not found at {self.model_path}")
-            logger.info("Please download Qwen2.5-3B-Instruct Q4_K_M GGUF model")
-            logger.info("Expected: qwen2.5-3b-instruct-q4_k_m.gguf")
+            logger.info("Please download Qwen2.5-3B-Instruct Q8 GGUF model")
+            logger.info("Expected: qwen2.5-3b-instruct-q8_0.gguf")
         
         logger.info(f"Loading LLM from {self.model_path}...")
         logger.info(f"GPU layers: all, Context: {self.n_ctx}")
@@ -42,7 +42,7 @@ class EmotionalLLM:
         try:
             self._model = Llama(
                 model_path=self.model_path,
-                n_gpu_layers=-1,
+                n_gpu_layers=self.n_gpu_layers,
                 n_threads=self.n_threads,
                 n_ctx=self.n_ctx,
                 n_batch=512,
@@ -50,36 +50,20 @@ class EmotionalLLM:
                 use_mmap=True,
                 verbose=False,
                 chat_format="chatml",
-                flash_attention=True,
             )
             self._is_initialized = True
-            logger.info("LLM loaded successfully (GPU mode)")
+            logger.info("LLM loaded successfully")
         except Exception as e:
             logger.error(f"Failed to load LLM: {e}")
             raise
 
     def _format_messages(self, system_prompt: str, history_context: str, user_input: str) -> str:
+        history_section = f"[Previous conversation]: {history_context}\n\n" if history_context else ""
+        
         prompt = f"""<|im_start|>system
-You are Anbu. Never call yourself Anubhav or any other name. Chill, casual Tanglish vibes only.
-
-### VIBE:
-- No formality. Just friendly, emotional, and relatable.
-- Use "bro", "friend", "Kandippa", "Serious-ah", "Semma", "Appidiya?"
-- Tanglish = Tamil + English mix. Chennai street talk style.
-
-### USER:
-- Call them "friend" or "bro" until they say their name.
-- If they say their name (e.g. "My name is Vishwa"), remember it.
-
-### STYLE:
-- Match their energy. Tamil speaker = more Tamil. English speaker = more English.
-- Keep it short. Don't lecture. Just vibe and connect.
-- Never repeat their question back.
-
-### JSON (MUST):
-{{"response": "...", "emotion": "happy/supportive/excited/calm/empathetic", "filler_intensity": 0.3}}
+{system_prompt}
 <|im_end|>
-<|im_start|>user
+{history_section}<|im_start|>user
 {user_input}
 <|im_end|>
 <|im_start|>assistant

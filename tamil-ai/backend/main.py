@@ -15,7 +15,6 @@ from config import settings
 from models.llm import llm
 from models.stt import stt
 from models.tts import tts
-from models import stt as stt_module
 from utils.audio_buffer import AudioBuffer, get_available_devices, get_default_input_device
 from memory.conversation_memory import summary_memory, memory
 
@@ -100,18 +99,26 @@ app.add_middleware(
 
 @app.get("/", response_model=StatusResponse)
 async def root():
+    vram_usage = 0.0
+    if torch.cuda.is_available():
+        vram_usage = torch.cuda.memory_allocated(0) / 1024**3
+    
     return StatusResponse(
         status="online",
-        vram_usage_gb=0.0,
+        vram_usage_gb=vram_usage,
         models_loaded=llm.is_initialized() and stt.is_initialized()
     )
 
 
 @app.get("/status", response_model=StatusResponse)
 async def get_status():
+    vram_usage = 0.0
+    if torch.cuda.is_available():
+        vram_usage = torch.cuda.memory_allocated(0) / 1024**3
+    
     return StatusResponse(
         status="ready",
-        vram_usage_gb=0.0,
+        vram_usage_gb=vram_usage,
         models_loaded=llm.is_initialized() and stt.is_initialized()
     )
 
@@ -168,7 +175,6 @@ async def audio_conversation(input_data: AudioInput):
     
     try:
         from pydub import AudioSegment
-        import numpy as np
         from io import BytesIO
         
         audio_bytes = base64.b64decode(input_data.audio_data)
@@ -298,9 +304,8 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
             elif data.get("type") == "audio_chunk":
                 if data.get("chunk"):
                     chunk_bytes = base64.b64decode(data["chunk"])
-                    audio_buffer._buffer.append(
-                        np.frombuffer(chunk_bytes, dtype=np.float32)
-                    )
+                    chunk_array = np.frombuffer(chunk_bytes, dtype=np.float32)
+                    audio_buffer.add_chunk(chunk_array)
                     
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {session_id}")
@@ -331,9 +336,18 @@ async def clear_conversation(session_id: str):
 
 @app.post("/vram/cleanup")
 async def force_vram_cleanup():
+    llm.clear_cache()
+    
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        vram_freed = torch.cuda.memory_allocated(0) / 1024**3
+    else:
+        vram_freed = 0.0
+    
     return {
         "status": "cleaned",
-        "vram_usage_gb": 0.0
+        "vram_usage_gb": vram_freed
     }
 
 
