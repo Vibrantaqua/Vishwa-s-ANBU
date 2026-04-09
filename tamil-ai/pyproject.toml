@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "accelerate>=0.26.0",
     "aiosqlite==0.20.0",
     "fastapi==0.110.0",
     "faster-whisper==1.0.3",
@@ -21,5 +22,6 @@ dependencies = [
     "sounddevice>=0.4.6",
     "torch>=2.2.0",
     "torchaudio>=2.2.0",
+    "transformers>=4.36.0",
     "uvicorn[standard]==0.27.1",
 ]
