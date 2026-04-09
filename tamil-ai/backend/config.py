@@ -15,10 +15,15 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.2
     LLM_MAX_TOKENS: int = 256
     
-    # Whisper Settings (GPU mode)
+    # Whisper Settings (GPU mode) - Legacy faster-whisper config
     WHISPER_MODEL: str = "base"
     WHISPER_DEVICE: str = "cuda"
     WHISPER_COMPUTE_TYPE: str = "float16"
+    
+    # HuggingFace STT Settings - Tamil fine-tuned model
+    HF_STT_MODEL: str = "vasista22/whisper-tamil-medium"
+    HF_STT_DEVICE: str = "cuda"
+    HF_STT_COMPUTE_TYPE: str = "float16"
     
     # XTTS Settings (GPU mode)
     XTTS_MODEL_PATH: Optional[str] = None
@@ -26,9 +31,9 @@ class Settings(BaseSettings):
     XTTS_SPEAKER_WAV: str = os.path.join(os.path.dirname(__file__), "models", "tamil_speaker.wav")
     USE_XTTS: bool = False
     
-    # VRAM Guard
-    VRAM_THRESHOLD_GB: float = 3.8
-    IDLE_VRAM_TARGET_GB: float = 3.2
+    # VRAM Guard - Updated for larger Tamil model
+    VRAM_THRESHOLD_GB: float = 5.0
+    IDLE_VRAM_TARGET_GB: float = 4.0
     
     # Memory Settings
     DB_PATH: str = os.path.join(os.path.dirname(__file__), "data", "conversations.db")

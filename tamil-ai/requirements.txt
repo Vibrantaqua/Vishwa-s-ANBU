@@ -3,8 +3,12 @@
 # LLM Inference - llama-cpp-python (CPU only for this setup)
 llama-cpp-python==0.3.20
 
-# Speech-to-Text - faster-whisper (GPU accelerated)
-faster-whisper==1.0.3
+# Speech-to-Text - HuggingFace transformers (Tamil fine-tuned model)
+transformers>=4.36.0
+accelerate>=0.26.0
+
+# Speech-to-Text - faster-whisper (fallback option)
+# faster-whisper==1.0.3
 
 # Text-to-Speech
 gtts==2.5.1

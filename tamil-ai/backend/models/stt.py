@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from typing import Optional, Union
-from faster_whisper import WhisperModel
+from transformers import pipeline, AutoModelForSpeechSeq2Seq, AutoProcessor
 from loguru import logger
 from config import settings
 
@@ -9,58 +9,90 @@ from config import settings
 class SpeechToText:
     def __init__(
         self,
-        model_size: str = "tiny",
-        device: str = "cpu",
-        compute_type: str = "int8"
+        model_id: str = "vasista22/whisper-tamil-medium",
+        device: str = "cuda",
+        compute_type: str = "float16"
     ):
-        self.model_size = model_size
+        self.model_id = model_id
         self.device = device
         self.compute_type = compute_type
-        self._model: Optional[WhisperModel] = None
+        self._pipe = None
         self._is_initialized = False
 
     def load_model(self) -> None:
         if self._is_initialized:
             return
         
-        logger.info(f"Loading Whisper {self.model_size} on {self.device}...")
+        logger.info(f"Loading {self.model_id} on {self.device}...")
         
         try:
             if self.device == "cuda" and not torch.cuda.is_available():
                 logger.warning("CUDA not available, falling back to CPU")
                 self.device = "cpu"
-                self.compute_type = "int8"
+                self.compute_type = "float32"
             
-            self._model = WhisperModel(
-                self.model_size,
-                device=self.device,
-                compute_type=self.compute_type,
-                download_root=None,
-                num_workers=4 if self.device == "cuda" else 1
+            torch_dtype = torch.float16 if self.device == "cuda" else torch.float32
+            
+            model = AutoModelForSpeechSeq2Seq.from_pretrained(
+                self.model_id,
+                torch_dtype=torch_dtype,
+                low_cpu_mem_usage=True
             )
+            processor = AutoProcessor.from_pretrained(self.model_id)
+            
+            self._pipe = pipeline(
+                "automatic-speech-recognition",
+                model=model,
+                tokenizer=processor.tokenizer,
+                feature_extractor=processor.feature_extractor,
+                device=self.device,
+                torch_dtype=torch_dtype
+            )
+            
+            if hasattr(self._pipe.model, 'config') and hasattr(self._pipe.tokenizer, 'get_decoder_prompt_ids'):
+                self._pipe.model.config.forced_decoder_ids = self._pipe.tokenizer.get_decoder_prompt_ids(
+                    language="ta", task="transcribe"
+                )
+                logger.info("Forced Tamil language decoding")
+            
             self._is_initialized = True
-            logger.info(f"Whisper model loaded successfully on {self.device}")
+            logger.info(f"HuggingFace Tamil Whisper model loaded successfully on {self.device}")
         except Exception as e:
             error_msg = str(e).lower()
-            if "cublas" in error_msg or "cudart" in error_msg or "cuda" in error_msg:
+            if "cublas" in error_msg or "cudart" in error_msg or "cuda" in error_msg or "out of memory" in error_msg:
                 logger.warning(f"CUDA error ({e}), falling back to CPU...")
                 self.device = "cpu"
-                self.compute_type = "int8"
+                self.compute_type = "float32"
                 try:
-                    self._model = WhisperModel(
-                        self.model_size,
-                        device="cpu",
-                        compute_type="int8",
-                        download_root=None,
-                        num_workers=1
+                    torch_dtype = torch.float32
+                    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+                        self.model_id,
+                        torch_dtype=torch_dtype,
+                        low_cpu_mem_usage=True
                     )
+                    processor = AutoProcessor.from_pretrained(self.model_id)
+                    
+                    self._pipe = pipeline(
+                        "automatic-speech-recognition",
+                        model=model,
+                        tokenizer=processor.tokenizer,
+                        feature_extractor=processor.feature_extractor,
+                        device="cpu",
+                        torch_dtype=torch_dtype
+                    )
+                    
+                    if hasattr(self._pipe.model, 'config') and hasattr(self._pipe.tokenizer, 'get_decoder_prompt_ids'):
+                        self._pipe.model.config.forced_decoder_ids = self._pipe.tokenizer.get_decoder_prompt_ids(
+                            language="ta", task="transcribe"
+                        )
+                    
                     self._is_initialized = True
-                    logger.info("Whisper model loaded successfully on CPU (fallback)")
+                    logger.info("Tamil Whisper model loaded successfully on CPU (fallback)")
                 except Exception as e2:
-                    logger.error(f"Failed to load Whisper on CPU: {e2}")
+                    logger.error(f"Failed to load Tamil Whisper on CPU: {e2}")
                     raise
             else:
-                logger.error(f"Failed to load Whisper model: {e}")
+                logger.error(f"Failed to load Tamil Whisper model: {e}")
                 raise
 
     def _is_gibberish(self, text: str) -> bool:
@@ -111,51 +143,35 @@ class SpeechToText:
         audio_data = np.squeeze(audio_data)
         
         try:
-            segments, info = self._model.transcribe(
+            result = self._pipe(
                 audio_data,
-                language="ta",
-                task=task,
-                beam_size=5,
-                vad_filter=True,
-                vad_parameters=dict(
-                    min_silence_duration_ms=500,
-                    speech_pad_ms=400
-                ),
-                initial_prompt="Tamil, Tanglish, Anbu, Josh.",
-                no_speech_threshold=0.6
+                return_timestamps=False,
+                generate_kwargs={
+                    "language": "ta",
+                    "task": "transcribe"
+                }
             )
             
-            full_text = ""
-            segment_list = []
-            
-            for segment in segments:
-                full_text += segment.text
-                segment_list.append({
-                    "text": segment.text,
-                    "start": segment.start,
-                    "end": segment.end
-                })
-            
+            full_text = result.get("text", "")
             full_text = full_text.strip()
             
             if self._is_gibberish(full_text):
                 logger.debug(f"Gibberish detected, filtering: {full_text}")
                 full_text = ""
             
-            lang = "ta"
-            lang_prob = 0.0
-            try:
-                if info and hasattr(info, 'language'):
-                    lang = info.language or "ta"
-                    lang_prob = float(info.language_probability or 0.0)
-            except Exception:
-                pass
+            segment_list = []
+            if full_text:
+                segment_list.append({
+                    "text": full_text,
+                    "start": 0.0,
+                    "end": 0.0
+                })
             
             return {
                 "text": full_text,
                 "segments": segment_list,
-                "language": lang,
-                "language_probability": lang_prob
+                "language": "ta",
+                "language_probability": 0.0
             }
             
         except Exception as e:
@@ -173,17 +189,16 @@ class SpeechToText:
             self.load_model()
         
         try:
-            segments, info = self._model.transcribe(
+            result = self._pipe(
                 file_path,
-                language="ta",
-                beam_size=5,
-                vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500, speech_pad_ms=400),
-                initial_prompt="Tamil, Tanglish, Anbu, Josh.",
-                no_speech_threshold=0.6
+                return_timestamps=False,
+                generate_kwargs={
+                    "language": "ta",
+                    "task": "transcribe"
+                }
             )
             
-            full_text = "".join([segment.text for segment in segments])
+            full_text = result.get("text", "")
             full_text = full_text.strip()
             
             if self._is_gibberish(full_text):
@@ -191,8 +206,8 @@ class SpeechToText:
             
             return {
                 "text": full_text,
-                "language": info.language,
-                "language_probability": info.language_probability
+                "language": "ta",
+                "language_probability": 0.0
             }
         except Exception as e:
             logger.error(f"File transcription error: {e}")
@@ -202,15 +217,18 @@ class SpeechToText:
         return self._is_initialized
 
     def unload(self) -> None:
-        if self._model is not None:
-            del self._model
-            self._model = None
+        if self._pipe is not None:
+            del self._pipe
+            self._pipe = None
             self._is_initialized = False
-            logger.info("Whisper model unloaded")
+            logger.info("Tamil Whisper model unloaded")
+            
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
 
 stt = SpeechToText(
-    model_size=settings.WHISPER_MODEL,
-    device=settings.WHISPER_DEVICE,
-    compute_type=settings.WHISPER_COMPUTE_TYPE
+    model_id=settings.HF_STT_MODEL,
+    device=settings.HF_STT_DEVICE,
+    compute_type=settings.HF_STT_COMPUTE_TYPE
 )
