@@ -21,13 +21,13 @@ class SpeechToText:
         self._pipe = None
         self._is_initialized = False
         self._local_model_path = os.path.join(os.path.dirname(__file__), "pytorch_model.bin")
-        self._model_weights_path = os.path.expanduser("~/.cache/huggingface/hub/models--vasista22--whisper-tamil-medium/snapshots/f50aae83b70d1262635aabb869cb0a9ac0a3b8dd/pytorch_model.bin")
+        self._local_cache_path = os.path.expanduser("~/.cache/huggingface/hub/models--vasista22--whisper-tamil-medium/snapshots/f50aae83b70d1262635aabb869cb0a9ac0a3b8dd")
 
     def load_model(self) -> None:
         if self._is_initialized:
             return
         
-        logger.info(f"Loading {self.model_id} on {self.device}...")
+        logger.info(f"Loading {self.model_id} on {self.device} (local files only)...")
         
         try:
             if self.device == "cuda" and not torch.cuda.is_available():
@@ -37,25 +37,17 @@ class SpeechToText:
             
             torch_dtype = torch.float16 if self.device == "cuda" else torch.float32
             
-            if os.path.exists(self._local_model_path):
-                cache_dir = os.path.dirname(self._model_weights_path)
-                os.makedirs(cache_dir, exist_ok=True)
-                if not os.path.exists(self._model_weights_path):
-                    shutil.copy(self._local_model_path, self._model_weights_path)
-                    logger.info(f"Copied local weights to cache: {self._model_weights_path}")
-            
             model = AutoModelForSpeechSeq2Seq.from_pretrained(
-                self.model_id,
+                self._local_cache_path,
                 torch_dtype=torch_dtype,
-                low_cpu_mem_usage=True
+                low_cpu_mem_usage=True,
+                local_files_only=True
             )
             
-            if os.path.exists(self._model_weights_path):
-                state_dict = torch.load(self._model_weights_path, map_location=self.device)
-                model.load_state_dict(state_dict, strict=False)
-                logger.info("Loaded model weights from local file")
-            
-            processor = AutoProcessor.from_pretrained(self.model_id)
+            processor = AutoProcessor.from_pretrained(
+                self._local_cache_path,
+                local_files_only=True
+            )
             
             self._pipe = pipeline(
                 "automatic-speech-recognition",
@@ -83,25 +75,17 @@ class SpeechToText:
                 try:
                     torch_dtype = torch.float32
                     
-                    if os.path.exists(self._local_model_path):
-                        cache_dir = os.path.dirname(self._model_weights_path)
-                        os.makedirs(cache_dir, exist_ok=True)
-                        if not os.path.exists(self._model_weights_path):
-                            shutil.copy(self._local_model_path, self._model_weights_path)
-                            logger.info(f"Copied local weights to cache: {self._model_weights_path}")
-                    
                     model = AutoModelForSpeechSeq2Seq.from_pretrained(
-                        self.model_id,
+                        self._local_cache_path,
                         torch_dtype=torch_dtype,
-                        low_cpu_mem_usage=True
+                        low_cpu_mem_usage=True,
+                        local_files_only=True
                     )
                     
-                    if os.path.exists(self._model_weights_path):
-                        state_dict = torch.load(self._model_weights_path, map_location="cpu")
-                        model.load_state_dict(state_dict, strict=False)
-                        logger.info("Loaded model weights from local file")
-                    
-                    processor = AutoProcessor.from_pretrained(self.model_id)
+                    processor = AutoProcessor.from_pretrained(
+                        self._local_cache_path,
+                        local_files_only=True
+                    )
                     
                     self._pipe = pipeline(
                         "automatic-speech-recognition",

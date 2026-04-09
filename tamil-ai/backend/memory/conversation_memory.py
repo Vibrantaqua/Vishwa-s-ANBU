@@ -68,7 +68,8 @@ class ConversationMemory:
         filler_intensity: float
     ) -> int:
         async with self._lock:
-            async with self._get_connection() as conn:
+            conn = await self._get_connection()
+            async with conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT COALESCE(MAX(turn_number), 0) + 1 as next_turn
@@ -86,7 +87,8 @@ class ConversationMemory:
 
     async def get_recent_turns(self, session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         async with self._lock:
-            async with self._get_connection() as conn:
+            conn = await self._get_connection()
+            async with conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT * FROM conversations 
@@ -99,7 +101,8 @@ class ConversationMemory:
 
     async def get_turn_count(self, session_id: str) -> int:
         async with self._lock:
-            async with self._get_connection() as conn:
+            conn = await self._get_connection()
+            async with conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT COUNT(*) as count FROM conversations WHERE session_id = ?
@@ -108,7 +111,8 @@ class ConversationMemory:
 
     async def save_summary(self, session_id: str, summary: str, turn_count: int) -> None:
         async with self._lock:
-            async with self._get_connection() as conn:
+            conn = await self._get_connection()
+            async with conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO summaries (session_id, summary_text, turn_count)
@@ -119,7 +123,8 @@ class ConversationMemory:
 
     async def get_latest_summary(self, session_id: str) -> Optional[str]:
         async with self._lock:
-            async with self._get_connection() as conn:
+            conn = await self._get_connection()
+            async with conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT summary_text FROM summaries
