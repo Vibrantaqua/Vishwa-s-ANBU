@@ -5,6 +5,8 @@ from transformers import pipeline, AutoModelForSpeechSeq2Seq, AutoProcessor
 from loguru import logger
 from config import settings
 
+import os
+import shutil
 
 class SpeechToText:
     def __init__(
@@ -18,6 +20,8 @@ class SpeechToText:
         self.compute_type = compute_type
         self._pipe = None
         self._is_initialized = False
+        self._local_model_path = os.path.join(os.path.dirname(__file__), "pytorch_model.bin")
+        self._model_weights_path = os.path.expanduser("~/.cache/huggingface/hub/models--vasista22--whisper-tamil-medium/snapshots/f50aae83b70d1262635aabb869cb0a9ac0a3b8dd/pytorch_model.bin")
 
     def load_model(self) -> None:
         if self._is_initialized:
@@ -33,11 +37,24 @@ class SpeechToText:
             
             torch_dtype = torch.float16 if self.device == "cuda" else torch.float32
             
+            if os.path.exists(self._local_model_path):
+                cache_dir = os.path.dirname(self._model_weights_path)
+                os.makedirs(cache_dir, exist_ok=True)
+                if not os.path.exists(self._model_weights_path):
+                    shutil.copy(self._local_model_path, self._model_weights_path)
+                    logger.info(f"Copied local weights to cache: {self._model_weights_path}")
+            
             model = AutoModelForSpeechSeq2Seq.from_pretrained(
                 self.model_id,
                 torch_dtype=torch_dtype,
                 low_cpu_mem_usage=True
             )
+            
+            if os.path.exists(self._model_weights_path):
+                state_dict = torch.load(self._model_weights_path, map_location=self.device)
+                model.load_state_dict(state_dict, strict=False)
+                logger.info("Loaded model weights from local file")
+            
             processor = AutoProcessor.from_pretrained(self.model_id)
             
             self._pipe = pipeline(
@@ -65,11 +82,25 @@ class SpeechToText:
                 self.compute_type = "float32"
                 try:
                     torch_dtype = torch.float32
+                    
+                    if os.path.exists(self._local_model_path):
+                        cache_dir = os.path.dirname(self._model_weights_path)
+                        os.makedirs(cache_dir, exist_ok=True)
+                        if not os.path.exists(self._model_weights_path):
+                            shutil.copy(self._local_model_path, self._model_weights_path)
+                            logger.info(f"Copied local weights to cache: {self._model_weights_path}")
+                    
                     model = AutoModelForSpeechSeq2Seq.from_pretrained(
                         self.model_id,
                         torch_dtype=torch_dtype,
                         low_cpu_mem_usage=True
                     )
+                    
+                    if os.path.exists(self._model_weights_path):
+                        state_dict = torch.load(self._model_weights_path, map_location="cpu")
+                        model.load_state_dict(state_dict, strict=False)
+                        logger.info("Loaded model weights from local file")
+                    
                     processor = AutoProcessor.from_pretrained(self.model_id)
                     
                     self._pipe = pipeline(
@@ -146,10 +177,8 @@ class SpeechToText:
             result = self._pipe(
                 audio_data,
                 return_timestamps=False,
-                generate_kwargs={
-                    "language": "ta",
-                    "task": "transcribe"
-                }
+                max_new_tokens=80,
+                temperature=0.0
             )
             
             full_text = result.get("text", "")
@@ -191,11 +220,7 @@ class SpeechToText:
         try:
             result = self._pipe(
                 file_path,
-                return_timestamps=False,
-                generate_kwargs={
-                    "language": "ta",
-                    "task": "transcribe"
-                }
+                return_timestamps=False
             )
             
             full_text = result.get("text", "")

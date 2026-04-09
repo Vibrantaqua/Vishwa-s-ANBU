@@ -21,9 +21,10 @@ class Settings(BaseSettings):
     WHISPER_COMPUTE_TYPE: str = "float16"
     
     # HuggingFace STT Settings - Tamil fine-tuned model
+    # Note: medium model requires ~4GB VRAM, use CPU if GPU has <5GB available
     HF_STT_MODEL: str = "vasista22/whisper-tamil-medium"
-    HF_STT_DEVICE: str = "cuda"
-    HF_STT_COMPUTE_TYPE: str = "float16"
+    HF_STT_DEVICE: str = "cpu"  # CPU fallback due to limited VRAM on laptop GPU
+    HF_STT_COMPUTE_TYPE: str = "float32"
     
     # XTTS Settings (GPU mode)
     XTTS_MODEL_PATH: Optional[str] = None
