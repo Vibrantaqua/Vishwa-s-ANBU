@@ -214,7 +214,8 @@ class ConversationSummaryMemory:
 
     async def clear_session(self, session_id: str) -> None:
         async with self.memory._lock:
-            async with self.memory._get_connection() as conn:
+            conn = await self.memory._get_connection()
+            async with conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "DELETE FROM conversations WHERE session_id = ?", 

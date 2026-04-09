@@ -80,7 +80,7 @@ class TextToSpeech:
         except Exception as e:
             logger.warning(f"gTTS failed: {e}, trying pyttsx3...")
         
-        # Try pyttsx3 (offline)
+        # Try pyttsx3 (offline) - each call creates fresh engine to avoid thread reuse issues
         try:
             import pyttsx3
             engine = pyttsx3.init()
@@ -90,6 +90,9 @@ class TextToSpeech:
                 temp_path = f.name
             engine.save_to_file(text[:500], temp_path)
             engine.runAndWait()
+            # Stop the engine to release threads
+            engine.stop()
+            del engine
             import soundfile as sf
             audio_data, sr = sf.read(temp_path)
             if len(audio_data.shape) > 1:
