@@ -47,18 +47,25 @@ class TextToSpeech:
         # Try edge-tts (best quality, needs internet)
         try:
             import edge_tts
-            import asyncio
             import tempfile
-            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
-                temp_path = f.name
-            asyncio.run(edge_tts.aget_audio(text[:500], temp_path))
+            import asyncio
+            
+            async def _synthesize():
+                with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
+                    temp_path = f.name
+                communicate = edge_tts.Communicate(text[:500], "ta-IN-ValluvarNeural")
+                await communicate.save(temp_path)
+                return temp_path
+            
+            temp_path = asyncio.run(_synthesize())
             from pydub import AudioSegment
             audio = AudioSegment.from_mp3(temp_path)
             audio = audio.set_frame_rate(24000).set_channels(1)
             os.unlink(temp_path)
             buffer = BytesIO()
             audio.export(buffer, format='wav')
-            return buffer.getvalue(), False
+            logger.info("TTS: Using edge-tts (Tamil Neural)")
+            return buffer.getvalue(), True
         except Exception as e:
             logger.warning(f"edge-tts failed: {e}, trying gTTS...")
         

@@ -7,13 +7,13 @@ class Settings(BaseSettings):
     APP_NAME: str = "Tamil Emotional Conversational AI"
     DEBUG: bool = True
     
-    # LLM Settings - Qwen2.5-3B-Instruct
-    MODEL_PATH: str = os.path.join(os.path.dirname(__file__), "models", "qwen2.5-3b-instruct-q4_k_m.gguf")
-    LLM_N_GPU_LAYERS: int = -1
-    LLM_N_THREADS: int = 6
-    LLM_N_CTX: int = 2048
-    LLM_TEMPERATURE: float = 0.2
-    LLM_MAX_TOKENS: int = 256
+    # Ollama LLM Settings
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen2.5-3b-q6k"
+    OLLAMA_TEMPERATURE: float = 0.75
+    OLLAMA_MAX_TOKENS: int = 384
+    OLLAMA_TOP_P: float = 0.95
+    OLLAMA_REPEAT_PENALTY: float = 1.15
     
     # Whisper Settings (GPU mode)
     WHISPER_MODEL: str = "base"
@@ -54,4 +54,3 @@ Examples:
 
 settings = Settings()
 os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
-os.makedirs(os.path.dirname(settings.MODEL_PATH.replace(settings.MODEL_PATH.split("/")[-1], "")), exist_ok=True)

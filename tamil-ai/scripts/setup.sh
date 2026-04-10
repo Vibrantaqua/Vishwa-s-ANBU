@@ -76,12 +76,12 @@ download_models() {
     
     mkdir -p backend/models
     
-    echo "[*] Qwen2.5-3B-Instruct Q4_K_M GGUF model (~2GB)"
-    MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
-    MODEL_PATH="backend/models/qwen2.5-3b-instruct-q4_k_m.gguf"
+    echo "[*] Qwen2.5-3B-Instruct Q8_0 GGUF model (~3.6GB)"
+    MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q8_0.gguf"
+    MODEL_PATH="backend/models/qwen2.5-3b-instruct-q8_0.gguf"
     
     if [ -f "$MODEL_PATH" ]; then
-        echo "[✓] Q4_K_M model already exists"
+        echo "[✓] Q8_0 model already exists"
     else
         echo "[*] Downloading model (this may take a while)..."
         curl -L -o "$MODEL_PATH" "$MODEL_URL" --progress-bar || echo "[!] Download failed, please download manually"
@@ -98,7 +98,7 @@ setup_env() {
     
     cat > backend/.env << 'EOF'
 DEBUG=True
-MODEL_PATH=./models/qwen2.5-3b-instruct-q4_k_m.gguf
+MODEL_PATH=./models/qwen2.5-3b-instruct-q8_0.gguf
 LLM_N_GPU_LAYERS=-1
 LLM_N_THREADS=6
 LLM_N_CTX=2048

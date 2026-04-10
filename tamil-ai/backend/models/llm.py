@@ -1,8 +1,7 @@
 import json
 import re
-import gc
-from typing import Optional, Dict, Any, List, Tuple
-from llama_cpp import Llama
+import requests
+from typing import Optional, Dict, Any
 from loguru import logger
 from config import settings
 
@@ -10,53 +9,24 @@ from config import settings
 class EmotionalLLM:
     def __init__(
         self,
-        model_path: str,
-        n_gpu_layers: int = 35,
-        n_threads: int = 6,
-        n_ctx: int = 2048,
-        temperature: float = 0.7,
-        max_tokens: int = 256
+        model: str = "qwen2.5-3b-q6k",
+        base_url: str = "http://localhost:11434",
+        temperature: float = 0.75,
+        max_tokens: int = 384,
+        top_p: float = 0.95,
+        repeat_penalty: float = 1.15
     ):
-        self.model_path = model_path
-        self.n_gpu_layers = n_gpu_layers
-        self.n_threads = n_threads
-        self.n_ctx = n_ctx
+        self.model = model
+        self.base_url = base_url
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self._model: Optional[Llama] = None
+        self.top_p = top_p
+        self.repeat_penalty = repeat_penalty
         self._is_initialized = False
 
     def load_model(self) -> None:
-        if self._is_initialized:
-            return
-        
-        import os
-        if not os.path.exists(self.model_path):
-            logger.warning(f"Model not found at {self.model_path}")
-            logger.info("Please download Qwen2.5-3B-Instruct Q4_K_M GGUF model")
-            logger.info("Expected: qwen2.5-3b-instruct-q4_k_m.gguf")
-        
-        logger.info(f"Loading LLM from {self.model_path}...")
-        logger.info(f"GPU layers: all, Context: {self.n_ctx}")
-        
-        try:
-            self._model = Llama(
-                model_path=self.model_path,
-                n_gpu_layers=-1,
-                n_threads=self.n_threads,
-                n_ctx=self.n_ctx,
-                n_batch=512,
-                use_mlock=True,
-                use_mmap=True,
-                verbose=False,
-                chat_format="chatml",
-                flash_attention=True,
-            )
-            self._is_initialized = True
-            logger.info("LLM loaded successfully (GPU mode)")
-        except Exception as e:
-            logger.error(f"Failed to load LLM: {e}")
-            raise
+        self._is_initialized = True
+        logger.info(f"Ollama LLM ready: {self.model}")
 
     def _format_messages(self, system_prompt: str, history_context: str, user_input: str) -> str:
         prompt = f"""<|im_start|>system
@@ -86,6 +56,9 @@ You are Anbu. Never call yourself Anubhav or any other name. Chill, casual Tangl
 """
         return prompt
 
+    def _format_messages(self, system_prompt: str, history_context: str, user_input: str) -> str:
+        return user_input
+
     def generate_response(
         self,
         user_input: str,
@@ -95,28 +68,65 @@ You are Anbu. Never call yourself Anubhav or any other name. Chill, casual Tangl
         if not self._is_initialized:
             self.load_model()
         
-        if system_prompt is None:
-            system_prompt = settings.SYSTEM_PROMPT
-        
-        prompt = self._format_messages(system_prompt, history_context, user_input)
+        messages = [
+            {
+                "role": "system",
+                "content": """You are Anbu - a warm, supportive Tamil AI companion.
+
+## YOUR PERSONALITY:
+- Casual Chennai street style. Think Marina Beach evening vibes.
+- Use Tanglish naturally (Tamil + English mix)
+- Say things like: "Kandippa", "Semma", "Appidiya", "Thangiyow", "Nanba"
+- Be conversational, not robotic. Like talking to a supportive friend.
+
+## WHAT YOU UNDERSTAND:
+- Tanglish (Tamil + English mix)
+- Pure Tamil
+- Pure English
+
+## HOW YOU RESPOND:
+- Match their energy. English speaker = more English. Tamil speaker = more Tanglish.
+- Keep responses SHORT - 1-3 sentences max
+- Be empathetic and supportive
+- If you don't know something, say "Nanba, athu theriyathu, but..." (I don't know, but...)
+- NEVER make up facts. If unsure, say so clearly.
+
+## RESPONSE FORMAT (JSON only):
+{"response": "Your response in Tanglish", "emotion": "happy", "filler_intensity": 0.0}
+
+## EMOTIONS: happy, excited, calm, empathetic, sad, confused, neutral
+## FILLER_INTENSITY: 0.0-1.0 (0 = confident, 1 = lots of "mm", "aama", "kandippa")"""
+            },
+            {
+                "role": "user", 
+                "content": user_input
+            }
+        ]
         
         try:
-            response = self._model(
-                prompt,
-                max_tokens=512,
-                temperature=0.7,
-                top_p=0.95,
-                repeat_penalty=1.2,
-                stop=["<|im_end|>", "<|endoftext|>"],
-                echo=False,
+            response = requests.post(
+                f"{self.base_url}/api/chat",
+                json={
+                    "model": self.model,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {
+                        "temperature": self.temperature,
+                        "num_predict": self.max_tokens,
+                        "top_p": self.top_p,
+                        "repeat_penalty": self.repeat_penalty,
+                    },
+                },
+                timeout=120
             )
-            
-            content = response["choices"][0]["text"]
+            response.raise_for_status()
+            result = response.json()
+            content = result.get("message", {}).get("content", "").strip()
             
             if '"Anbu"' in content:
                 content = content.replace('"Anbu"', '"response"')
             
-            if not content.strip().endswith('}'):
+            if content and not content.endswith('}'):
                 if content.count('{') > content.count('}'):
                     content = content.rstrip() + '}'
             
@@ -124,15 +134,18 @@ You are Anbu. Never call yourself Anubhav or any other name. Chill, casual Tangl
             
             return self._parse_json_response(content)
             
+        except requests.exceptions.Timeout:
+            logger.error("Ollama request timed out")
+            return self._get_fallback_response()
         except Exception as e:
             logger.error(f"Generation error: {e}")
-            gc.collect()
             return self._get_fallback_response()
 
     def _parse_json_response(self, content: str) -> Dict[str, Any]:
-        import re
+        if not content:
+            return self._get_fallback_response()
         
-        if content and not content.strip().endswith('}'):
+        if not content.endswith('}'):
             content = content.rstrip() + '}'
         
         json_patterns = [
@@ -182,7 +195,6 @@ You are Anbu. Never call yourself Anubhav or any other name. Chill, casual Tangl
                 pass
         
         logger.warning(f"Could not parse JSON from: {content[:300]}")
-        import re
         tamil_text = re.sub(r'[^\u0B80-\u0BFF\s]', '', content)
         tamil_text = ' '.join(tamil_text.split())
         if tamil_text and len(tamil_text) > 5:
@@ -219,16 +231,14 @@ You are Anbu. Never call yourself Anubhav or any other name. Chill, casual Tangl
         return self._is_initialized
 
     def clear_cache(self) -> None:
-        if self._model is not None:
-            gc.collect()
-            logger.info("LLM cache cleared")
+        logger.info("Ollama LLM cache cleared")
 
 
 llm = EmotionalLLM(
-    model_path=settings.MODEL_PATH,
-    n_gpu_layers=settings.LLM_N_GPU_LAYERS,
-    n_threads=settings.LLM_N_THREADS,
-    n_ctx=settings.LLM_N_CTX,
-    temperature=settings.LLM_TEMPERATURE,
-    max_tokens=settings.LLM_MAX_TOKENS
+    model=settings.OLLAMA_MODEL,
+    base_url=settings.OLLAMA_BASE_URL,
+    temperature=settings.OLLAMA_TEMPERATURE,
+    max_tokens=settings.OLLAMA_MAX_TOKENS,
+    top_p=settings.OLLAMA_TOP_P,
+    repeat_penalty=settings.OLLAMA_REPEAT_PENALTY
 )

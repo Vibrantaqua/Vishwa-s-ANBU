@@ -57,9 +57,9 @@ async def lifespan(app: FastAPI):
     
     try:
         llm.load_model()
-        logger.info("LLM ready")
+        logger.info(f"LLM ready (Ollama: {settings.OLLAMA_MODEL})")
     except Exception as e:
-        logger.error(f"LLM load failed: {e}")
+        logger.error(f"LLM init failed: {e}")
     
     try:
         stt.load_model()

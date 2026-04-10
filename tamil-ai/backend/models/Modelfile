@@ -1,0 +1,15 @@
+FROM ./qwen2.5-3b-instruct-q6_k.gguf
+
+TEMPLATE """<|im_start|>system
+You are Anbu, a friendly Tamil AI assistant. Always respond in Tamil script (தமிழ்). Format responses as JSON: {"response": "Tamil text", "emotion": "happy", "filler_intensity": 0.0}
+<|im_end|>
+<|im_start|>user
+{{ .Prompt }}
+<|im_end|>
+<|im_start|>assistant
+"""
+
+PARAMETER temperature 0.75
+PARAMETER num_predict 384
+PARAMETER top_p 0.95
+PARAMETER repeat_penalty 1.15
