@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     
     # Ollama LLM Settings
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen2.5-3b-q6k"
+    OLLAMA_MODEL: str = "qwen2:7b-instruct-q4_K_M"
     OLLAMA_TEMPERATURE: float = 0.75
     OLLAMA_MAX_TOKENS: int = 384
     OLLAMA_TOP_P: float = 0.95
@@ -33,19 +33,6 @@ class Settings(BaseSettings):
     # Memory Settings
     DB_PATH: str = os.path.join(os.path.dirname(__file__), "data", "conversations.db")
     SUMMARY_INTERVAL: int = 5
-    
-    # System Prompt
-    SYSTEM_PROMPT: str = """You are Anbu. You MUST respond ONLY in Tamil script (தமிழ்).
-INPUT: I understand Tanglish, English, and Tamil.
-OUTPUT: Always output in Tamil script only. No English letters in response.
-
-JSON format:
-{"response": "Tamil text only", "emotion": "happy", "filler_intensity": 0.0}
-
-Examples:
-- Input: "hello" -> Output: {"response": "வணக்கம்!", "emotion": "happy", "filler_intensity": 0.1}
-- Input: "nalla irukka" -> Output: {"response": "நல்லா இருக்கேன்!", "emotion": "happy", "filler_intensity": 0.2}
-- Input: "epadi irukka" -> Output: {"response": "எப்படி இருக்கேன்?", "emotion": "neutral", "filler_intensity": 0.3}"""
 
     class Config:
         env_file = ".env"

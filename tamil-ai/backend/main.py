@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):
     
     try:
         llm.load_model()
-        logger.info(f"LLM ready (Ollama: {settings.OLLAMA_MODEL})")
+        logger.info(f"LLM ready ({settings.OLLAMA_MODEL})")
     except Exception as e:
         logger.error(f"LLM init failed: {e}")
     
@@ -135,7 +135,8 @@ async def text_conversation(input_data: TextInput):
         
         llm_response = llm.generate_response(
             user_input=input_data.text,
-            history_context=history_context
+            history_context=history_context,
+            session_id=session_id
         )
         
         new_summary = await summary_memory.add_turn_and_check_summary(
@@ -208,7 +209,8 @@ async def audio_conversation(input_data: AudioInput):
         
         llm_response = llm.generate_response(
             user_input=transcription["text"],
-            history_context=history_context
+            history_context=history_context,
+            session_id=session_id
         )
         
         new_summary = await summary_memory.add_turn_and_check_summary(
@@ -261,7 +263,8 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
                         
                         llm_response = llm.generate_response(
                             user_input=transcription["text"],
-                            history_context=history_context
+                            history_context=history_context,
+                            session_id=session_id
                         )
                         
                         await summary_memory.add_turn_and_check_summary(
@@ -326,6 +329,7 @@ async def get_conversation_history(session_id: str, limit: int = 20):
 @app.delete("/conversation/history/{session_id}")
 async def clear_conversation(session_id: str):
     await summary_memory.clear_session(session_id)
+    llm.clear_history(session_id)
     return {"status": "cleared", "session_id": session_id}
 
 

@@ -44,20 +44,26 @@ class TextToSpeech:
         return self._generate_fallback_audio(text)
 
     def _generate_fallback_audio(self, text: str) -> Tuple[bytes, bool]:
-        # Try edge-tts (best quality, needs internet)
+        # Try edge-tts via ThreadPoolExecutor (best quality, needs internet)
         try:
+            import concurrent.futures
+            import asyncio
             import edge_tts
             import tempfile
-            import asyncio
             
-            async def _synthesize():
+            def _sync_synthesize():
                 with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
                     temp_path = f.name
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
                 communicate = edge_tts.Communicate(text[:500], "ta-IN-ValluvarNeural")
-                await communicate.save(temp_path)
+                loop.run_until_complete(communicate.save(temp_path))
+                loop.close()
                 return temp_path
             
-            temp_path = asyncio.run(_synthesize())
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                temp_path = executor.submit(_sync_synthesize).result(timeout=30)
+            
             from pydub import AudioSegment
             audio = AudioSegment.from_mp3(temp_path)
             audio = audio.set_frame_rate(24000).set_channels(1)
